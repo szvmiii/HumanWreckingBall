@@ -1,169 +1,88 @@
-# Claude.md — Human Wrecking Ball (placeId 139473074201684)
+# Claude.md — Human Wrecking Ball (Roblox, placeId 139473074201684)
 
-Working notes so any session can pick up where we left off.
-**Update this file after every change.** Last updated: 2026-10-03.
+Working notes so context survives between sessions. **Update this file after every change.**
+Last updated: 2026-10-03
 
-> There is also an old `Claude.md` (different capitalisation) in the repo with the v7 low-poly art direction
-> (no lamps/flowers/textures). It is OUTDATED and contradicts the cozy direction below. Delete it so only this file remains.
-
----
+## What the game is
+Tycoon + wrecking-ball. Each player gets a plot (Shop / Smelter / Sell booths) and a lane with the same
+number. A cannon on the lane's pad launches the player down a very long lane of destructible walls.
+Max 4 players (4 plots, 4 lanes).
 
 ## What we are doing right now
+Reshaping the map into a **true "+" seen from above**, with very long / wide / tall lanes.
+Status of the current request:
 
-**Cozy but REALISTIC restyle in the spirit of the Roblox game "Build a Haven"** so the game attracts players.
-(Owner asked on 2026-10-03. First pass was pastel/pink and too bright: owner said "not candy pink, more realistic, lighting too bright".
-Second pass (same day) uses natural earthy colours, real materials and dim warm lighting. I could not find reliable info or screenshots of the real
-game. If the owner shares reference screenshots, re-tune the palette.)
+- [x] Remove the circular grass meadow, rim wall, and all trees/bushes/boulders outside the plus
+- [x] Hub (spawn area) bigger: circle r=70 -> **square 260 x 260** (HubHalf 130)
+- [x] Plots smaller: 120 x 120 -> **120 wide x 88 deep** (about 27% less area)
+- [x] Remove all unnecessary land (only hub + 4 plots + 4 lanes exist now; void elsewhere)
+- [x] Lanes really long / wide / tall (see numbers below) with strong biome changes
+- [ ] Playtest: walk a plot -> lane, check cannon pad, fall-off/void behaviour, lighting in the void
+- [ ] Decide wall destruction approach (block count is huge, see "Open concerns")
 
-The map layout is unchanged: circular island, "+" shape, hub plaza in the centre, four arms. Each arm = plot on the
-inner side, then that plot's lane going outward. Only colours, materials, shapes, lighting and decor changed.
-
-### Status
-
-| Item | State |
-|---|---|
-| "+" layout, plots inner / lanes outer, plot 120 x 120, lane 80 x 720 | DONE (unchanged) |
-| Natural dim warm lighting (v2: no pink haze, low brightness) | DONE (`Gen.applyLighting`, runs inside `build()`) |
-| Natural earthy palette + real materials (Cobblestone, Wood, Slate, Rock, Limestone, Grass) | DONE (v2) |
-| Hub: cream plaza + pink ring, golden autumn wishing tree with falling leaves + fairy lights, 4 benches, 4 lanterns | DONE |
-| Plots: grass yard, wood booth pads, wooden picket fences with fairy lights, flower beds, round shrubs, lanterns, arch with round finials | DONE |
-| Lanes: natural biome floors (real materials), limestone walls with rounded lane-coloured wood rail + fairy lights, lanterns at the cannon pad | DONE |
-| Rim wall: slate base, earth cliff, grass top | DONE |
-| Decor rebuilt from scratch: round trees (30% autumn gold), wildflower bushes, slate boulders, 12 firefly zones | DONE |
-| BoothBuilder: restored to the earlier natural-colour version (identical to `BoothBuilder_PreCozy`) | DONE |
-| Numeric checks: PlotService contract, lane attributes, booth build levels 1-5 for all 3 kinds | DONE, all good |
-| **Visual check by eye** (screenshots failed again: helper hit max_tool_calls) | **NOT DONE, look in Studio** |
-| Playtest: join, claim plot, spawn, booth build, upgrades | NOT DONE |
-| Lane wall blocks / cannon / wrecking-ball gameplay | NOT STARTED (no script yet) |
-
----
-
-## Art direction (cozy + realistic, decided 2026-10-03)
-
-- **Owner feedback:** NOT candy / pink / pastel. More realistic. Lighting was too bright. Keep it cozy through warm light, wood, stone, plants.
-- Natural, slightly muted colours. Real materials: `Grass` (ground, yards, caps), `Cobblestone` / `Pebble` / `Slate` (plaza, kerbs), `Wood` / `WoodPlanks`
-  (fences, benches, arch, pads, booths), `Limestone` (lane walls), `Ground` (dirt, soil, end wall, cliff), `Rock` / `Basalt` / `Slate` (lane floors, boulders),
-  `Concrete` (cannon pad), `Neon` (lights only), `Glass` (shop display). Round shapes (balls, cylinders) are still used for trees, bushes, lantern globes, finials.
-- Lane colours (muted): 1 brick red `184,92,84`, 2 slate blue `86,122,170`, 3 forest green `92,146,104`, 4 ochre `206,160,76`.
-- Shared colours: linen `226,214,190`, stone sand `190,172,144`, slate tan `122,106,88`, wood `108,74,50`, light wood `160,120,82`, soil `84,60,42`, lantern `255,200,120`.
-- Plants: greens `70,118,62 / 88,136,70 / 108,152,82`, autumn gold `200,150,60 / 184,120,48 / 214,168,76`, wildflowers yellow / white / lavender / red.
-- Biome floors: Dirt `132,98,68` (Ground), Stone `128,130,134` (Slate), DeepRock `74,80,98` (Rock), Crystal `112,90,150` (Slate), Obsidian `50,42,62` (Basalt), MagmaCore `170,70,40` (Basalt).
-- Ground greens: `88,128,64` / `96,138,70` / `104,148,76`, plot yards `110,152,80`.
-- **Lighting (v2, dim + natural):** ClockTime 16.3, Brightness 1.5, ExposureCompensation -0.25, Ambient `70,74,84`, OutdoorAmbient `104,110,122`,
-  ColorShift_Top warm, ColorShift_Bottom dark grey, `CozyAtmosphere` (Density 0.3, Haze 0.8, Glare 0, blue-grey, NO pink), `CozyColor` (Contrast 0.1, Saturation -0.05),
-  `CozyBloom` (Intensity 0.15, Threshold 1.8), `CozySunRays` 0.03. Existing `Sky` kept. If still too bright: lower `L.Brightness` / `ExposureCompensation`.
-  If too dark in lanes: raise `Ambient` a little. `Lighting.Technology` cannot be set from scripts: set **Future** by hand in Studio.
-- **Booths stay plain on purpose.** The owner earlier asked to drop the ornate booth look (awning, valance, sign posts, finials, banners, crest, stars).
-  BoothBuilder keeps the plain pitched roof + floating BillboardGui label. Do not add ornaments back unless the owner asks.
-- Cozy touches live in the map, not on the booths: wishing tree, benches, fairy lights, lanterns, flowers, fireflies.
-
----
-
-## Layout spec (studs)
-
-Arm numbering is clockwise: **1 = North (-Z), 2 = East (+X), 3 = South (+Z), 4 = West (-X)**.
-Plot N always pairs with Lane N. Distances below are measured outward from the centre.
-
-| Thing | Distance from centre | Size |
+## Map spec (all numbers live in `ServerStorage.MapGenerator` -> `Gen.CFG`)
+| Thing | Before | Now |
 |---|---|---|
-| Hub plaza | 0 - 70 | radius 70 (+4 kerb ring), pebble ring dia 104, inner dia 84 |
-| Wishing tree | centre | kerb dia 34, trunk 26 tall, canopy up to ~49 high |
-| Plot | 60 - 180 | 120 x 120 |
-| Booth ring (Shop, Sell, Smelter) | ring radius 36 around plot centre | pad diameter 48 |
-| Cannon pad | 180 - 206 | 80 wide, 26 deep |
-| Lane floors (6 biomes x 120) | 180 - 900 | 80 wide |
-| Wall start (blocks begin) | 212 | WallLength 720, ends 932 |
-| Lane side walls (limestone) | 180 - 932 | 8 thick, 44 high, round rail on top |
-| End wall | 932 - 956 | 96 wide |
-| Rim wall (96 segments) | radius 980 | 60 high |
-| Grass ground disc | radius 1020 | |
+| Hub | circle, radius 70 | square, half-size 130 (260 x 260) |
+| Plot | 120 x 120 | 120 wide x 88 deep |
+| Booth ring radius | 36 | 28 (pads 38 diameter) |
+| Lane inner width | 80 | **104** (arm outer width 120 = plot width, keeps the plus clean) |
+| Lane length | 720 (6 x 120) | **1800** (6 biomes x 300) |
+| Lane start (from centre) | 180 | 218 (PlotR0 130 + PlotD 88) |
+| Cannon pad depth | 26 | 40 |
+| Destructible wall height | 32 | **64** (WallHeight attr), starts 48 after lane start |
+| Side wall height | 44 | **110** |
+| Lane bounds / invisible lid | 44 | **120** |
+| Footprint | circle r~1000 | plus, +-2044 studs end to end |
 
-Booth positions per plot (local frame): Shop left, Sell right, Smelter on the hub side. The lane side stays open so players can walk straight
-to the cannon. All booths face the plot centre (PlotService `slotCFrame`). Spawn sits 18 studs lane-side of plot centre and faces down the lane.
-Plot sign is on the hub-side arch and faces the hub.
+Arms: 1 = North (-Z), 2 = East (+X), 3 = South (+Z), 4 = West (-X). Plot i uses Lane i.
 
----
+Lane biomes in order from the cannon: Dirt, Stone, Deep Rock, Crystal Cavern, Obsidian, Magma Core.
+Each has its own floor colour/material, tinted side wall section, glowing neon strip along the wall base,
+and coloured rail lights. A lit gate lintel with a billboard label ("CRYSTAL CAVERN / 900 studs deep")
+sits at each biome change (gates are non-collidable).
 
-## How the map is generated (read this before touching Workspace.Map by hand)
+Hub: square cobble plaza, 1.4x scaled cherry-blossom wishing tree in the centre, 4 benches (lane colours),
+4 lanterns, 4 corner flower beds, cobble path to each plot, low kerb wall around the edge with an opening at
+every arm, a few fireflies. No other decor exists.
 
-The map is **generated by a ModuleScript**, not hand-placed:
-
-`ServerStorage.MapGenerator` (dev tool, edit mode only)
-
-Run it from the command bar or MCP `execute_luau` (Edit datamodel):
-
+## How to rebuild the map
+Edit mode, command bar or MCP `execute_luau`:
 ```lua
-local SS = game:GetService("ServerStorage")
-local fresh = SS.MapGenerator:Clone()   -- clone, because require() caches the module
-fresh.Parent = SS
-print(require(fresh).build())
-fresh:Destroy()
+require(game.ServerStorage.MapGenerator).build()
 ```
+- It clears and regenerates Lanes, Plots, Structure, Hub, Ground, Decor (and deletes Rim if present).
+- It harvests template parts (Sign gui, Spawn, Pad, Floor_*, etc.) from the existing Plot1 / Lane1 first,
+  so **do not delete Plot1 / Lane1 by hand** without keeping those template part names.
+- Use a fresh `:Clone()` of the module before `require` if you re-run after editing it (require caches).
+- Tweak sizes in `Gen.CFG`; everything else derives from it.
+- Backups of the previous look: `ServerStorage.MapGenerator_PreCozy`, `BoothBuilder_PreCozy`
+  (older style; the current MapGenerator is the circular-hub version replaced by this plus version).
 
-- All sizes live in `Gen.CFG` at the top. All colours are constants at the top (`LANE_COLORS`, `BIOME_COLORS`, `BIOME_MATERIALS`, `CREAM`, `WOOD`, ...). Change them there and re-run.
-- `build()` wipes and recreates Map.Lanes, Plots, Structure, Hub, Ground, Rim and **Decor** (decor is now built from scratch, it is no longer re-placed
-  from old templates), deletes Map.PlotFences, then calls `Gen.applyLighting()`.
-- Plot/lane parts are still cloned from the existing map as templates (Sign + SurfaceGui, Spawn, Pad, Origin, Floor_*, CannonPad, ...). Do not rename them.
-  Colour and material of every cloned part are overridden at the clone site, so the templates' old look does not matter.
-  Style changes can be applied by patching the constants and `mk(...)` / `.Material = ...` lines, then re-running `build()`.
-- Helpers inside `build()`: `mk` (plain part), `ball`, `bulb` (fairy light), `flower`, `lantern` (post + glowing globe + PointLight), `clone`, `at`, `place`.
-- **The scripts live only in the Studio place file** (`.rbxlx` is gitignored; `src/server` only has a hello-world script). They are not in git.
-  Export `MapGenerator` and `BoothBuilder` to files if you want them version-controlled.
-- Backups of the pre-cozy scripts and map (`BoothBuilder` currently equals `BoothBuilder_PreCozy`): `ServerStorage.MapGenerator_PreCozy`, `ServerStorage.BoothBuilder_PreCozy`, `ServerStorage.OldMap_Backup`.
-  **Delete all of these (and `MapGenerator`) from ServerStorage before publishing** if you do not want them shipped.
+## Scripts and what they rely on
+- `ServerScriptService.PlotService` — assigns plot/lane on join, builds booths on `Slot_*` models,
+  uses plot attributes `CenterX/CenterZ` (booths face that point), the `Spawn`, and the `Sign` SurfaceGui.
+- `ServerScriptService.BoothBuilder` — builds Shop/Smelter/Sell booths (platform 30 x 24).
+  Its invisible `InteractZone` reaches 26 studs in front; nothing uses it yet.
+- Nothing references `Map.Rim`, `RingRadius`, or `PlazaRadius` anymore (removed).
+- Lane attributes (for the future wall/cannon scripts): `WallHeight, BlockSize, WallLength, WallWidth,
+  LaneStartR, WallStartR, WallStart, LaneDirection, LaneYawDeg, LaneHeight, LaneLength, OwnerUserId`.
+- Map attributes: `Layout=Plus, Style=Cozy, Plots, Lanes, BlockSize, LaneWidth, PlotSize, PlotDepth,
+  HubHalf, LaneLength, LaneHeight, LaneStartR`.
 
-### Gotchas
-- `require` caches. After editing the module Source you must clone it (as above) or the old code runs.
-- Cylinder parts need `* CFrame.Angles(0, 0, pi/2)` to lie flat (axis is X). `Size.X` of a cylinder is its length / thickness.
-- Ball parts are always built with equal X/Y/Z size (`ball()` takes one diameter).
-- Decor models are built around the origin with the base at y = 0 and `WorldPivot = CFrame.new()`, then `place()` moves them with `PivotTo`.
-- Roblox parts cap at 2048 per axis, so the ground disc is 2040 wide and the rim radius is 980.
-- Do not put coplanar parts at the same Y (z-fighting). Ground discs and plaza discs are stacked 0.02-0.06 apart on purpose.
-- Lantern base is y = 0.9 (plaza / cannon pad top is about 0.95).
-- The screenshot helper subagent is unreliable here (blank images before, `max_tool_calls` error on 2026-10-03). It once left the camera `Scriptable`.
-  If you try it, afterwards run `workspace.CurrentCamera.CameraType = Enum.CameraType.Fixed`.
-- `execute_luau` cannot read `Lighting.Technology` (missing RobloxScript capability). Skip that property.
-
----
-
-## Contracts other scripts rely on
-
-**PlotService** (`ServerScriptService.PlotService`, unchanged) expects:
-- `Workspace.Map.Plots.Plot1..4`, each with `Sign` (direct child, SurfaceGui > TextLabel named `Text`), `Spawn`, and models `Slot_Shop`, `Slot_Smelter`, `Slot_Sell` each containing an `Origin` part.
-- Plot attributes `CenterX`, `CenterZ` (world coords of plot centre), `PlotIndex`, `LaneIndex`, `OwnerUserId`.
-- `Workspace.Map.Lanes.Lane1..4` with attribute `OwnerUserId`.
-- Map attribute `Plots` (max players, 4).
-- `BoothBuilder.build(kind, cf, level, parent)` returns a Model with `InteractZone`, `UpgradeAnchor`, attributes `Station` and `Level`. Verified after the restyle.
-
-**Lane attributes** (for the future wall / cannon script):
-`LaneIndex, OwnerUserId, WallHeight (32), BlockSize (4), WallLength (720), WallWidth (80), LaneStartR (180), WallStartR (212), WallStart (Vector3, world, ground level, centre of lane), LaneDirection (Vector3, unit, outward), LaneYawDeg`.
-Lanes point in four directions, so use `WallStart` + `LaneDirection`. `CenterX` and `WallStartZ` no longer exist.
-
-**Map attributes:** `Layout="Plus", Style="Cozy", Plots, Lanes, BlockSize, LaneWidth, PlotSize, PlazaRadius, RingRadius, LaneStartR`.
-
----
-
-## Next steps (in order)
-
-1. **Look at it in Studio** (nobody has seen the cozy look yet): overhead of the hub, one plot with booths, the inside of a lane, the rim at the edge.
-   Check: is the lighting dark enough now (owner said v1 was too bright), colours look natural and not candy, tree canopy size vs the plaza, fireflies visible.
-2. Set `Lighting.Technology` to **Future** by hand (cannot be done by script).
-3. **Playtest**: join, plot claim, spawn position and facing, all 3 booths build inside the plot, upgrade prompt, leave / rejoin.
-4. Cozy polish ideas (only if wanted): ambient music / nature sounds, a pond or small bridge in a wedge, cottage props, warm UI theme (muted wood / cream panels), soft sound effects.
-5. Lane gameplay: generate wall blocks from the lane attributes (pastel biome colours, rounded debris), wire the cannon at `CannonMount`, keep the lid (`LaneCeiling`) solid.
-6. Tune plot size via `PlotSize` / `SlotRing` if 120 still feels too big or small.
-
-## Open questions for the owner
-- Does the v2 natural look match what you meant by "Build a Haven"? Screenshots of the parts you like would let me match it more closely.
-- Is the lane length (720) right now that width is 80, or should lanes be shorter / longer? (Changing it means changing the rim radius too.)
-- Should the lane ceiling stay as an invisible solid lid, or be removed?
-
----
+## Open concerns / next ideas
+1. **Wall block count is huge.** At BlockSize 4 each lane wall is about 104 x 64 x 1752 -> roughly
+   182k blocks per lane, 730k total. Do NOT spawn that many physical parts. Options: bigger BlockSize
+   (8 = about 8x fewer), spawn walls in chunks ahead of the player, or fake distant walls and only
+   build real blocks near the ball.
+2. Gate labels are visible from up to 1000 studs and clutter the hub view; lower `MaxDistance` if annoying.
+3. Void around the plus: players that fall respawn via FallenPartsDestroyHeight. Consider a soft
+   skybox/void colour in Lighting so the empty space looks intentional.
+4. Plot depth is 88; booths + arch + fences fit but are tight. Do not shrink PlotD further without
+   moving the booth ring (SlotRing) or the arch.
+5. Cannon, launch, wall destruction, Coins system (`DEV_FREE_UPGRADES = true` in PlotService) are still TODO.
 
 ## Change log
-
-| Date | Change |
-|---|---|
-| 2026-10-02 | Reworked the map into the "+" on a circle layout (plots inner, lanes outer), lane width 80, plot 120, rim wall at radius 980. See older notes in git history. |
-| 2026-10-03 | **Cozy restyle ("Build a Haven" inspired).** Rewrote `ServerStorage.MapGenerator` (pastel palette, cherry-blossom wishing tree + benches in the hub, picket fences + fairy lights, flower beds, round decor trees/bushes/pebbles, fireflies, cream lane walls with round lane-coloured rails, peach rim cliff, `Gen.applyLighting`). Recoloured `ServerScriptService.BoothBuilder` (pastel + SmoothPlastic, layout unchanged, kept plain). Rebuilt Workspace.Map (2359 descendants). Checked PlotService contract and booth levels 1-5 numerically. Backups: `MapGenerator_PreCozy`, `BoothBuilder_PreCozy`. Screenshot check failed. |
-| 2026-10-03 (v2) | Owner said v1 was too candy / pink and too bright, wants it realistic. Patched `MapGenerator`: natural earthy palette (muted lane colours, greens, autumn-gold tree, wildflowers), real materials (Cobblestone, Pebble, Slate, Wood, Limestone, Ground, Rock, Basalt), dim natural lighting (Brightness 1.5, Exposure -0.25, blue-grey haze, low bloom). Restored `BoothBuilder` from `BoothBuilder_PreCozy`. Rebuilt the map. Checked lighting values, booth levels 1-5, PlotService contract numerically; no visual check yet. |
+- 2026-10-03: Rebuilt as plus: removed circle meadow/rim/trees, square 260 hub, plots 120x88,
+  lanes 104 wide x 1800 long x 110 tall walls, per-biome walls/strips/gates. MapGenerator rewritten.
+  Verified: 4 plots / 4 lanes / 3 slots each, spawns at +-194 from centre, floors contiguous 218 -> 2018.
