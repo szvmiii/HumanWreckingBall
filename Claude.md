@@ -1,126 +1,113 @@
 # Claude.md — Human Wrecking Ball (placeId 139473074201684)
 
 Working notes so any session can pick up where we left off.
-**Update this file after every change.** Last updated: 2026-10-07.
+**Update this file after every change.** Last updated: 2026-10-09.
 
 ---
 
 ## What we are doing right now
 
-**Current focus (2026-10-07): the launch mechanic.** Done: invisible launch barriers, a default cannon per lane owner, the timing-bar launch (see "Cannon + launch system"). Next: wall blocks and the momentum model.
+**Current focus: polish the launch + destructible wall (built 2026-10-09, playtested headless, NOT yet seen by eye).**
 
-Before that the map was reworked into a "+" shape on a circle (below):
+State of the game: a lane owner walks into the launch area of their cannon -> LAUNCH button -> timing bar -> the
+cannon shoots them up and forward (22 deg), gravity brings them down, they bore a cone through a destructible wall
+and slide to a stop -> result -> back to their plot. VFX are streamed live during the flight.
 
-Reworking the map area into a **"+" shape on a circle**:
-
-- Circular island, centre at (0, 0, 0), rim wall at radius 980.
-- Circular hub plaza in the centre (radius 70) with a monument.
-- Four arms (N, E, S, W). Each arm = **plot on the inner side**, then that plot's **lane** going outward.
-- Lanes are large (80 wide, 720 long). Plots are deliberately small (120 x 120) so walking across one takes about 7s at WalkSpeed 16.
+Previous session (a different model, ran out of usage) left `CannonService` with a missing `end` (it did not
+compile, so no remotes existed and nothing worked), a wall only 32 studs thick at radius 568, and blast VFX that
+were sent after the flight. All of that was rewritten on 2026-10-09 (see below).
 
 ### Status
 
 | Item | State |
 |---|---|
-| "+" layout generated, plots inner / lanes outer | DONE |
-| Plot size reduced (180 -> 120), booths ring a circular plaza | DONE |
-| Lane width 48 -> 80 | DONE |
-| Circular island + rim wall + decor placed in wedges between arms | DONE |
-| Old "PLOT 3" label bug on Plot2 (old numbering was scrambled) | FIXED (plot i is always arm i) |
-| Lane ceiling was an opaque white slab (blocked sun, hid biome floors) | FIXED (invisible, still solid, no shadow) |
-| Numeric checks (positions, slots, attributes, pad overlap) | DONE, all good |
-| Launch barrier on every lane (invisible, blocks walking into Stone / ore zones) | DONE, playtested |
-| Default cannon for every lane owner (built on claim, removed on release) | DONE, playtested (look not checked by eye) |
-| Enter cannon -> timing bar -> server scores press -> flight -> result -> back to plot | DONE, playtested end to end |
-| Wall blocks, momentum loss per block, ore drops | NOT STARTED (flight is free flight with constant deceleration for now) |
-| Hub tree lights: 8 bulbs on a small black cable ring, tied to the trunk with 4 cables (`Hub.TreeLights`) | DONE (not yet seen in viewport) |
-| **Visual check of lane interior / booths in play** | **NOT DONE** (viewport screenshots came back blank; check by eye in Studio) |
-| Playtest: join, claim plot, spawn, booth build, upgrades | NOT DONE |
-| Lane wall blocks / cannon / wrecking-ball gameplay | NOT STARTED (no script yet) |
+| "+" map (hub, 4 plots, 4 lanes, rim) | DONE (see Layout) |
+| Booths (Village Stalls, 5 levels, 4 kinds) | DONE (see Claude_old.md for the booth design notes) |
+| LAUNCH button in the launch area (no E prompt) | DONE, playtested |
+| Timing bar -> server-scored power | DONE, playtested (PERFECT) |
+| Angled cannon, gravity, drag, slide | DONE, playtested |
+| Destructible wall from parts, cone-shaped hole | DONE, playtested (hole 23 blocks wide at entry, 3 at 340 studs in) |
+| Live VFX (trail, debris, sparks, shockwave, flash, shake, FOV) | DONE, NOT seen by eye |
+| **Look at it in Studio / mobile** | **NOT DONE: do this first** |
+| Upgrades (BlastLevel, Cannon Power) wired to coins/shop | NOT STARTED (`BlastLevel` player attribute exists, defaults 0) |
+| Ore drops / coins from destroyed blocks | NOT STARTED |
+| Wall rebuild between runs | Wall persists until the lane is released; no per-launch reset yet (decide: reset on each launch, or progressive digging?) |
 
 ---
 
-## Cannon + launch system (built 2026-10-07, playtested with a real client)
-
-All four scripts live in Studio only (not in the Rojo `src/` folders):
+## Launch + wall system (all scripts live in Studio only, not in the Rojo `src/` folders)
 
 | Script | What it does |
 |---|---|
-| `ReplicatedStorage.Shared.LaunchConfig` (ModuleScript) | All tunables + the pure math (bar pointer position, power from pointer, flight speed / time / distance). Server and client both use it, so what the player sees is what the server scores. |
-| `ServerScriptService.CannonBuilder` (ModuleScript) | `build(lane, parent)` cannon model, `buildBarrier(lane)`, `fire(cannon)` (recoil + smoke). Style copied from BoothBuilder (village palette, lane colour on hubs + mouth ring). |
-| `ServerScriptService.CannonService` (Script) | At start: one invisible `LaunchBarrier` per lane, `Workspace.Map.Cannons`, `ReplicatedStorage.LaunchRemotes`, collision group `Flying`. Builds `Cannon<i>` when `Lane<i>` attribute `OwnerUserId` becomes a user id (PlotService sets it), destroys it when it goes back to 0. Runs the launch flow. |
-| `StarterPlayerScripts.LaunchController` (LocalScript) | Builds the timing-bar UI in code (no StarterGui objects), holds the character in the barrel, plays the flight, camera + FOV kick, hides the Enter prompt for non-owners. |
+| `ReplicatedStorage.Shared.LaunchConfig` | All tunables + pure math (bar position, power, blast radius, hardness by depth). |
+| `ReplicatedStorage.Shared.Vfx` | Client effects: `blast`, `attachTrail`, `flash`, `shake`, `update` (returns the camera shake offset). |
+| `ServerScriptService.CannonBuilder` | Cannon model (angled barrel), `LaunchZone`, `Muzzle`, invisible `LaunchBarrier`, `fire()`. |
+| `ServerScriptService.WallBuilder` | The wall of a lane (see below). |
+| `ServerScriptService.CannonService` | Creates remotes + collision groups, builds cannon + wall when a lane gets an owner, runs the whole launch on the server. |
+| `StarterPlayerScripts.LaunchController` | LAUNCH button, timing bar UI, chase camera (smoothed, FOV grows with speed), plays the VFX events. |
 
-**Barrier:** `Lane<i>.LaunchBarrier`, created at runtime, so it is not visible in Edit mode. Invisible, solid, `CanQuery=false`. 112 x 120 x 4, centred 4 studs in front of `WallStart` (R 260-264, between the pad end at 258 and the first wall block at 266). Players in collision group `Flying` pass through it.
+### Flow
+1. Owner stands in `Cannon<i>.LaunchZone` -> client shows the LAUNCH button -> `RequestEnter`. Server checks lane owner + zone, puts the character into collision group `Flying` + `PlatformStand`, sends `EnterCannon(seatCFrame, barStart)`.
+2. Client holds the character in the barrel; pointer = triangle wave of `GetServerTimeNow()`. Press (Space / FIRE) -> `PressLaunch(serverTime)`. Server clamps the time (max 0.35 s in the past), scores it (PERFECT / GREAT / GOOD / WEAK), sends `LaunchStarted(rating, power)`, fires the cannon and sets a REAL velocity on the HumanoidRootPart (network owner set to nil for the flight, so the engine does gravity and the floor).
+3. `trackFlight` (server, every Heartbeat): applies drag, ground friction, then walks the real path in half-block sub-steps: `wall:baseHardness` -> blast radius -> drain speed -> `wall:applyBlast`. Blast events go to the client every frame via `LaunchVfx` (list of `{pos, radius, hardness, stuck}`). Stuck = blast radius < `MIN_BLAST` or speed < `MIN_SPEED`: the player stops against the wall and falls.
+4. Flight ends when the player is on the ground and nearly stopped (or `MAX_FLIGHT_TIME`). Server stores `LastDistance` / `BestDistance`, sends `LaunchFinished(distance, isBest)`, 2.5 s later sends the player to the plot `Spawn` (`ExitCannon`). A safety timer also sends them home.
 
-**Flow:**
-1. ProximityPrompt `Cannon1..4.PromptAnchor.EnterPrompt` (range 20, instant). Server checks lane owner. Player goes into group `Flying` (collides with nothing) + `PlatformStand`; server sends `EnterCannon(seatCFrame, barStart)`.
-2. Client holds the character at the seat (inside the barrel, head first), fixed camera behind the cannon, bar shown. Pointer = triangle wave of server time (`GetServerTimeNow()`), so server and client agree without sending positions.
-3. Press (Space or the LAUNCH button): client sends its server-time of the press. Server clamps it to at most 0.35 s in the past, computes pointer position -> power + rating (PERFECT / GREAT / GOOD / WEAK) -> speed, duration, distance. Sends `LaunchStarted(rating, power, origin, direction, speed, startTime)`; the flight starts 0.25 s later (cannon fires then).
-4. Client moves its own character along the lane with `LaunchConfig.distanceAt` (same formula as server). Server never trusts the client position. After the flight the server stores `LastDistance` / `BestDistance` (player attributes) and sends `LaunchFinished(distance, isBest)`; 2.5 s later the player is teleported to the plot `Spawn` (`ExitCannon`).
-5. LEAVE button = `LeaveCannon` remote, only while aiming. Respawn / leaving mid-launch clears the state.
+### Wall (WallBuilder)
+- Fills the whole lane: starts at `WallStartR` (266), `WallLength` 1752, `WallWidth` 104, height `LaunchConfig.WALL_HEIGHT` (112), blocks `WALL_BLOCK` = 8 studs (13 x 14 x 219 cells = ~40k cells per lane).
+- Cells are DATA (`broken` set). What you see is one slab per chunk (`WALL_CHUNK_LAYERS` = 2 layers = 16 studs) in the colour of the lane biome (Floor_Dirt ... Floor_MagmaCore). When a blast touches a chunk, the slab is swapped for its individual blocks (minus the blasted ones). A launch only fractures the chunks along its own tunnel (about 8k parts after a 383-stud launch).
+- Hardness comes from `LaunchConfig.hardnessAt(depth)` (biome table `BIOME_HARDNESS` 1, 2, 3.5, 5.5, 8, 12, 18 per 300 studs of lane).
+- Cone: `blastRadius = BLAST_BASE * (1 + BlastLevel * 0.15) * (speed/400)^0.5 / hardness^0.6`, capped by `BLAST_MAX` (56). Speed drains `exp(-DRAIN_K * hardness * distance)` for every stud travelled inside the wall (also through the already blasted tunnel). Harder + slower = smaller radius = cone, until the player gets stuck.
+- API: `build(lane, parent)`, `baseHardness`, `hardnessAt`, `peekBlast`, `applyBlast`, `reset`.
 
-**Player attributes:** `CannonState` ("Aiming" / "Launching" / nil), `LastDistance`, `BestDistance` (studs from the seat, not yet "depth into the wall").
-**Remotes** (`ReplicatedStorage.LaunchRemotes`): EnterCannon, PressLaunch, LeaveCannon, LaunchStarted, LaunchFinished, ExitCannon.
+### Collision groups
+`Flying` collides ONLY with `LaneFloor` (lane `Floor_*` parts + `CannonPad`, set in CannonService at start). Walls, barrier, ceiling, other players are ignored while flying. After the run the character goes back to `Default`.
 
-**Tunables (`LaunchConfig`):** `BAR_SPEED 1.1`, zone half widths `PERFECT 0.04 / GREAT 0.09 / GOOD 0.24`, `MIN_POWER 0.2`, `PERFECT_BONUS 1.15`, `MAX_SPEED 400`, `DECEL 120`. With these a PERFECT flies about 880 studs in 3.8 s, GREAT about 470, the worst hit about 25. Cannon geometry (barrel height 10.5 above the pad top, barrier offset) is at the top of `CannonBuilder`.
+### Tunables (`LaunchConfig`) and what they do right now
+`PITCH_DEG 22`, `MAX_SPEED 400` (PERFECT = x1.15), `GRAVITY 196.2` (info only: the engine uses Workspace.Gravity), `DRAG 0.35`, `DRAIN_K 0.0012`, `MIN_BLAST 3.2`, `MIN_SPEED 45`, `SLIDE_DECEL 120`, `LAND_HEIGHT 6`, `BLAST_BASE 22`, `BLAST_PER_LEVEL 0.15`. A PERFECT with no upgrades flew 383 studs (apex y about 71, lands at about 1.5 s, slides a bit). `simulateFlight`, `pathAt`, `velocityAt`, `flight` in LaunchConfig are leftovers from the old client-side flight and are unused (safe to delete).
 
-**Playtest results (Studio, real client):** walking into the lane stops at the barrier (also after a launch); prompt enters the cannon; Space scored GREAT, flew 473 studs, client end point matched the server distance, player came back to the plot spawn, camera / FOV / collision group restored; LEAVE works; prompt hidden while inside. NOT checked by eye: cannon look, bar layout, camera feel, mobile.
+### Playtest results (Studio, 2026-10-09)
+Console clean. Player claimed Lane1, cannon + wall built (110 slabs), client entered the cannon, PERFECT press, 29 live blast events, max speed 452, flew 383 studs, ended with the player back at the plot spawn. NOT checked by eye: cannon look, bar layout, camera feel, trail/debris look, performance with 8k blocks, mobile, two players at once.
 
-**Known simplifications / ideas:**
-- Flight is straight and horizontal at height about 11.5 (barrel height), no arc, gravity ignored. The wall is 64 high, so right now a launch hits the lower part of it. Options: raise the barrel, or tilt the flight upward.
-- Momentum model is just constant deceleration. When wall blocks exist, replace `distanceAt` with the real model (block hardness drains momentum) and compute it on the server along the same straight path.
-- Cannon upgrades (Cannon Power, ...) should change `MAX_SPEED` per player and the cannon model look.
+### Known issues / ideas
+- Drain makes the first flight end around 380 studs; tune `DRAIN_K` / `BLAST_BASE` to taste, then make upgrades (Cannon Power -> `MAX_SPEED`, Blast Radius -> `BlastLevel`, maybe a Toughness/Drain upgrade) matter.
+- Wall persists between launches (each launch continues in the old tunnel unless it is wider). Decide the design (reset per launch vs progressive digging; a reset is `walls[i]:reset()` in CannonService).
+- Slab to blocks swap shows a grid (blocks are 0.2 smaller than the cell) only where a blast hit; looks fine in theory, check by eye.
+- Ground slide uses the engine's friction + our `SLIDE_DECEL`; the pose is flat superman. A tumble/ragdoll would look more fun.
+- Debris is real physics parts (Debris service, 1.4-2.2 s); rate limited to one burst per 0.07 s.
+- Ideas: coins/ore from destroyed blocks, distance milestones, sound (none yet), leaderboards, level-up VFX for booths.
+- Edit-mode tip: `Source` of scripts can be set from `execute_luau` (long string brackets) and checked with `loadstring`.
 
 ---
 
-## Hub tree lights (redone 2026-10-05)
+## Hub tree lights (2026-10-05)
 
-The wishing tree in the hub centre (`Hub["Tree 2"]`, trunk radius 1.3-3 up to y about 17, branches and canopy from y 18 to 41) first had 24 loose neon balls. Then a big ring (radius 19.5) that floated around the canopy. Now `Hub.TreeLights` (Model, 64 parts, all `CanCollide=false`, `CastShadow=false`):
-- Small ring: radius 9, hangs at y=15 (under the canopy, so it is visible), sags 1.2 studs between bulbs.
-- 8 `FairyLight` Neon balls (1.4 studs, warm `255,200,120`), each on a short black `BulbStub`. 40 black `Cable` pieces (0.3 thick) form one closed loop.
-- 4 `TrunkCable` cables (every second bulb) run from the ring to the trunk at y=16.5. End points were raycast to the trunk surface (trunk radius 1.3-2.8 at the 4 angles) and each ends in a `TrunkClamp` ball (0.8).
-- Tweak `ringR, ringY, sag, count, steps, attachY, trunkR` in the tree lights block of `ServerStorage.MapGenerator` (`Gen.build`), or edit the live parts.
-- The generator was updated too (compiles), but its fixed `trunkR = 2.4` is for the imported `Tree 2`; the generator still builds its own procedural tree. Re-running `build()` wipes `Hub` (and `Tree 2` and the leaderboards with it), so do not rebuild without re-adding them.
-- Studio `studio_id` changed during this session (reconnect): always call `list_roblox_studios` first.
+`Hub.TreeLights` (Model, 64 parts, all `CanCollide=false`, `CastShadow=false`): small ring radius 9 at y=15, 8 neon bulbs, 40 black cable pieces, 4 trunk cables with clamps. Tweak the block in `ServerStorage.MapGenerator` (`Gen.build`) or edit the live parts. Re-running `build()` wipes `Hub` (and `Tree 2` and the leaderboards), so do not rebuild without re-adding them. Not yet seen in the viewport.
 
 ---
 
 ## Layout spec (studs)
 
-Arm numbering is clockwise: **1 = North (-Z), 2 = East (+X), 3 = South (+Z), 4 = West (-X)**.
-Plot N always pairs with Lane N. Distances below are measured outward from the centre.
+Arm numbering is clockwise: **1 = North (-Z), 2 = East (+X), 3 = South (+Z), 4 = West (-X)**. Plot N always pairs with Lane N.
 
 | Thing | Distance from centre | Size |
 |---|---|---|
 | Hub plaza | 0 - 70 | radius 70 (+4 kerb ring) |
 | Plot | 60 - 180 | 120 x 120 |
-| Booth ring (Shop, Sell, Smelter) | ring radius 36 around plot centre | pad diameter 48 |
-| Cannon pad | 180 - 206 | 80 wide, 26 deep |
-| Lane floors (6 biomes x 120) | 180 - 900 | 80 wide |
-| Wall start (blocks begin) | 212 | WallLength 720, ends 932 |
-| Lane side walls (teal) | 180 - 932 | 8 thick, 44 high |
-| End wall | 932 - 956 | 96 wide |
-| Rim wall (96 segments) | radius 980 | 60 high |
-| Grass ground disc | radius 1020 | |
+| Booth ring (Shop, Sell, Smelter, Forge) | ring radius 36 around plot centre | pad diameter 48 |
+| Cannon pad | R 218 - 258 | 104 wide, 40 deep |
+| Wall (blocks) | R 266 - 2018 | 104 wide, 112 high (WallLength 1752) |
+| Lane floors (6 biomes x 300) | R 218 - 2018 | 104 wide |
 
-Booth positions per plot (local frame): Shop left, Sell right, Smelter on the hub side. The lane side stays open so players can walk straight to the cannon. All booths face the plot centre (PlotService `slotCFrame` does this using the plot's `CenterX` / `CenterZ`).
-
-Spawn sits 18 studs lane-side of plot centre and faces down the lane.
-Plot sign is on the hub-side arch and faces the hub.
-
+Lane attributes (verified): `LaneIndex, OwnerUserId, WallHeight (64, old, unused by WallBuilder), BlockSize (4, old, unused), WallLength 1752, WallWidth 104, LaneStartR 218, WallStartR 266, WallStart (Vector3, ground level, centre), LaneDirection (unit, outward), LaneYawDeg, LaneHeight 120 (invisible ceiling at y 120.5), LaneLength 1800`.
 Biome order along each lane: Dirt, Stone, DeepRock, Crystal, Obsidian, MagmaCore.
-Per-arm colours come from the existing CannonPad colour of each lane (Lane1 pink; defaults pink / blue / green / amber).
+
+NOTE: the older notes mentioned lane radius 980 / rim wall; the lane actually runs out to R 2018. Check the rim and ground disc if you ever look at the outer edge.
 
 ---
 
-## How the map is generated (read this before touching Workspace.Map by hand)
+## How the map is generated
 
-The map is **generated by a ModuleScript**, not hand-placed:
-
-`ServerStorage.MapGenerator` (dev tool, edit mode only)
-
-Run it from the command bar or MCP `execute_luau` (Edit datamodel):
+`ServerStorage.MapGenerator` (dev tool, edit mode only). Run from the command bar or MCP `execute_luau` (Edit datamodel):
 
 ```lua
 local SS = game:GetService("ServerStorage")
@@ -129,53 +116,24 @@ fresh.Parent = SS
 print(require(fresh).build())
 fresh:Destroy()
 ```
-
-- All sizes live in `Gen.CFG` at the top of the module. Change numbers there and re-run.
-- `build()` wipes and recreates: Map.Lanes, Plots, Structure, Hub, Ground, Rim, and deletes Map.PlotFences (fences now live inside each plot).
-- It re-uses existing parts as templates (Sign + SurfaceGui, Spawn, Pad, Floor_* ...) so look and feel carry over. Do not rename those parts.
-- Decor trees and boulders are re-placed in the wedges between arms (seeded random, deterministic). 70 extra trees go in `Decor.WedgeTrees`.
-- Backup of the previous T-layout map: `ServerStorage.OldMap_Backup`. Delete both ServerStorage items before publishing if you do not want them shipped.
-
-### Gotchas
-- `require` caches. After editing the module Source you must clone it (as above) or the old code runs.
-- Cylinder parts need `* CFrame.Angles(0, 0, pi/2)` to lie flat (axis is X).
-- Roblox parts cap at 2048 per axis, so the ground disc is 2040 wide and the rim radius is 980.
-- Do not put coplanar parts at the same Y (z-fighting). Ground discs are stacked 0.02-0.05 apart on purpose.
+`build()` wipes and recreates Map.Lanes, Plots, Structure, Hub, Ground, Rim. Sizes live in `Gen.CFG`. Backups: `ServerStorage.OldMap_Backup`, `MapGenerator_PreCozy`, `BoothBuilder_V1_Backup`, `BoothBuilder_PreCozy` (delete before publishing).
+Gotchas: `require` caches; cylinders need `* CFrame.Angles(0, 0, pi/2)` to lie flat; parts cap at 2048 per axis; no coplanar parts at the same Y.
 
 ---
 
 ## Contracts other scripts rely on
 
-**PlotService** (`ServerScriptService.PlotService`, unchanged) expects:
-- `Workspace.Map.Plots.Plot1..4`, each with `Sign` (direct child, SurfaceGui > TextLabel named `Text`), `Spawn`, and models `Slot_Shop`, `Slot_Smelter`, `Slot_Sell` each containing an `Origin` part.
-- Plot attributes `CenterX`, `CenterZ` (world coords of plot centre), `PlotIndex`, `LaneIndex`, `OwnerUserId`.
-- `Workspace.Map.Lanes.Lane1..4` with attribute `OwnerUserId`.
-- Map attribute `Plots` (max players, 4).
-
-**Lane attributes** (for the future wall / cannon script):
-`LaneIndex, OwnerUserId, WallHeight (32), BlockSize (4), WallLength (720), WallWidth (80), LaneStartR (180), WallStartR (212), WallStart (Vector3, world, ground level, centre of lane), LaneDirection (Vector3, unit, outward), LaneYawDeg`.
-
-NOTE: old lanes used `CenterX` / `WallStartZ` because every lane ran along -Z. Lanes now point in four directions, so use `WallStart` + `LaneDirection` instead. `CenterX` and `WallStartZ` no longer exist.
-
-**Lane attributes verified in Studio 2026-10-07** (the numbers in the layout table above are older): `WallWidth 104` (lane floors are 104 wide, dividers at +-56), `LaneStartR 218`, `WallStartR 266`, `WallLength 1752`, `WallHeight 64`, `LaneHeight 120` (invisible ceiling at y 120.5), `LaneLength 1800`. Cannon pad = R 218-258 (40 deep). Plots also have a `Slot_Forge` booth now.
-
-**Map attributes:** `Layout="Plus", Plots, Lanes, BlockSize, LaneWidth, PlotSize, PlazaRadius, RingRadius, LaneStartR`.
-(`HubHalfWidth`, `HubDepth` removed.)
+**PlotService** expects `Workspace.Map.Plots.Plot1..4` with `Sign`, `Spawn`, `Slot_Shop/Smelter/Sell/Forge` (each with `Origin`), plot attributes `CenterX, CenterZ, PlotIndex, LaneIndex, OwnerUserId`, `Workspace.Map.Lanes.Lane1..4` with `OwnerUserId`, Map attribute `Plots`. PlotService sets player attribute `PlotIndex` (CannonService uses it) and lane `OwnerUserId` (CannonService builds / removes cannon + wall on change).
+**BoothBuilder** contract and design: see `Claude_old.md`.
 
 ---
 
 ## Next steps (in order)
 
-00. Press Play and look at the cannon, the timing bar (size, colours, mobile) and the launch camera; tell me what to tweak.
-0. Look at the new tree lights in Studio (ring visible under the canopy, spokes reaching the trunk, nothing clipping into branches at y 18-24). If it clips, change `ringY` / `attachY`.
-
-1. **Look at it in Studio**: overhead view, a plot with booths, the inside of a lane. Note anything mis-scaled against the character (booths go up to about 1.45x at level 5, sign stars reach about 30 studs high).
-2. **Playtest**: join, check the plot claim, spawn position and facing, that all 3 booths build inside the plot, upgrades via the ProximityPrompt, and leave / rejoin.
-3. Check booth footprint at level 5 against the plot edge and neighbouring booths (calculated to fit, never seen in game).
-4. Polish pass on the empty wedges (more variety, paths, props) if it feels bare. Currently only grass, trees and boulders.
-5. Wall blocks: generate them from the lane attributes (start at `WallStartR` 266, 104 x 64, `BlockSize` 4), stream in chunks. Then replace the constant deceleration with the real momentum model (see the cannon section).
-6. Optional: tune plot size via `PlotSize` / `SlotRing` if 120 still feels big or small.
-
-## Open questions for the owner
-- Is the lane length (720) right now that width is 80, or should lanes be shorter / longer? (Changing it means changing the rim radius too.)
-- Should the lane ceiling stay as an invisible solid lid, or be removed?
+1. **Press Play and look**: cannon, LAUNCH button, timing bar, chase camera, trail, debris, the tunnel in the wall from inside and from the side. Tell Claude what to change (colours, sizes, camera, how loud the shake is).
+2. Decide the wall persistence (reset per launch or progressive digging) and the progression numbers (how far a PERFECT should go at start).
+3. Wire upgrades: Cannon Power (`MAX_SPEED`), Blast Radius (`BlastLevel` attribute), a drain/toughness upgrade; hook into the coins system (PlotService has `DEV_FREE_UPGRADES = true` + a TODO).
+4. Rewards: coins/ore from destroyed blocks (data is in `WallBuilder.applyBlast`), distance milestones, leaderboard.
+5. Sound (launch boom, wall crunch, stuck thud) and a level-up VFX for booths.
+6. Playtest with 2+ players (4 lanes) and on mobile; check part count / performance after many launches.
+7. Remove the unused leftovers in `LaunchConfig`; move the Studio-only scripts into Rojo `src/` if we want them in git.
